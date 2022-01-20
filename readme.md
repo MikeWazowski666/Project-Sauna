@@ -13,7 +13,7 @@ So I created a digital temperature sensor, that saves the temperature data in [G
 - Jumper wires
 
 # How to wire it up?
-Check out (this)[Schematic.pdf] schematic.
+Check out [this](Schematic.pdf) schematic.
 
 # Installation
 
