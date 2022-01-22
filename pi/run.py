@@ -4,7 +4,7 @@
 from prometheus_client import make_wsgi_app, Gauge
 from wsgiref.simple_server import make_server
 from sys import argv
-import glob, os, subprocess
+import glob, os
 
 def main():
     # Create Gauge
