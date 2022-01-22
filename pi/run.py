@@ -1,53 +1,55 @@
 #!/usr/bin/env python3
-# Must be ran with sudo! 
+#
+#
+#
+# --------------------
+# Must be ran as root! 
+#---------------------
+#
+#
+#
 
 from prometheus_client import make_wsgi_app, Gauge
 from wsgiref.simple_server import make_server
-from sys import argv
 import glob, os
 
 def main():
     # Create Gauge
-    g = Gauge('sauna_temperature', 'Check temperature')
+    g = Gauge('sauna_temperature', 'Check temperature', ['sensor'])
 
+    # Make slaves
     os.system('modprobe w1-gpio')
     os.system('modprobe w1-therm')
 
+    dev_name = []
+    dev_file = []
+    
+    # Search for devices
     base_dir = '/sys/bus/w1/devices/'
-    device_folder = glob.glob(base_dir + '28*')[0]
-    device_file = device_folder + '/w1_slave'
+    dev_folder = glob.glob(base_dir + '28*')
+    for i in range(len(dev_folder)):
+        dev_name.append(dev_folder[i][23:])
+        dev_file.append(dev_folder[i] + '/temperature')
 
-    def read_temp_raw():
-        f = open(device_file, 'r')
-        lines = f.readlines()
-        f.close()
-        return lines
-
-    def read_temp():
-        lines = read_temp_raw()
-        while lines[0].strip()[-3:] != 'YES':
-            time.sleep(0.2)
-            lines = read_temp_raw()
-        equals_pos = lines[1].find('t=')
-        if equals_pos != -1:
-            temp_string = lines[1][equals_pos+2:]
-            temp = float(temp_string) / 1000.0
+    # Read temperature    
+    def read_temp(fn):
+        with open(fn) as h:
+            temp = float(h.read()) / 1000 # Convert to celsus
             return temp
-
-    metrics_app = make_wsgi_app()
-
-    def my_app(environ, start_fn):
+    
+    def web_metrics(environ, start_fn):
+        # Check if path is to `/metrics`
         if environ['PATH_INFO'] == '/metrics':
-            g.set(read_temp())
+            # Set temperature to lable
+            for i in range(len(dev_folder)):
+                g.labels(dev_name[i]).set(read_temp(dev_file[i]))
+            # Return
             return metrics_app(environ, start_fn)
-
-    httpd = make_server('', 8000, my_app)
+    
+    # Run exporter
+    metrics_app = make_wsgi_app()
+    httpd = make_server('', 8000, web_metrics)
     httpd.serve_forever()
 
 if __name__ == "__main__":
-    try:
-        argv[1]
-        print(f"usage: sudo python3 {argv[0]}\n\nExporter for Prometheus made for DS18B20 sensor.")
-
-    except IndexError:
-        main()
+    main()
