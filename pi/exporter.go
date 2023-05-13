@@ -9,13 +9,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
 type Sensor struct {
-	Name string  // Name of sensor
-	Path string  // Path to sensor
-	Temp float64 // Temp in celsus
+	Name     string  // Name of sensor
+	Path     string  // Path to sensor
+	Temp     float64 // Temp in celsus
+	lastTick int     // Data loss tick counter
 }
 
 var (
@@ -38,6 +40,7 @@ func check(e error) {
 func httpLogHandler(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s %s\n", r.RemoteAddr, r.Method, r.URL)
+		w.Header().Add("Content-Type", "text/plain")
 		handler.ServeHTTP(w, r)
 	})
 }
@@ -59,9 +62,9 @@ func _init() {
 
 	// Search for sensors
 	if !*skipProbe {
-		err := exec.Command("modprobe ws-gpio").Run()
+		err := exec.Command("/usr/sbin/modprobe", "ws-gpio").Run()
 		check(err)
-		err = exec.Command("modprobe w1-therm").Run()
+		err = exec.Command("/usr/sbin/modprobe", "w1-therm").Run()
 		check(err)
 	}
 
@@ -74,7 +77,7 @@ func _init() {
 		check(err)
 		slaveHandle.Close()
 
-		globSensors = append(globSensors, Sensor{Name: "Sensor" + strconv.Itoa(i), Path: s + "/temperature"})
+		globSensors = append(globSensors, Sensor{Name: "Sensor" + strconv.Itoa(i), Temp: 0, Path: s + "/temperature"})
 	}
 }
 
@@ -83,11 +86,13 @@ func readTemp(s Sensor) Sensor {
 	data, err := os.ReadFile(s.Path)
 	if err != nil {
 		log.Println("[!]", err)
-	} else {
-		_dataS := string(data[:len(data)-1])
-		fTemp, _ := strconv.ParseFloat(_dataS, 64)
+	} else if string(data) != "0\n" {
+		_dataS := strings.Split(string(data), "\n")
+		fTemp, _ := strconv.ParseFloat(_dataS[0], 64)
 		s.Temp = fTemp / 1000 // Convert to celsus
+		return s
 	}
+	s.lastTick += 1
 	return s
 }
 
@@ -98,7 +103,7 @@ func httpMetricsHandle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Help menu (is it really needed?)
-	fmt.Fprint(w, "# HELP sauna_temperature Check temperature\n# TYPE sauna_temperature gauge\n")
+	fmt.Fprint(w, "# HELP sauna_temperature Check temperature from the sensors\n# TYPE sauna_temperature gauge\n")
 	for _, s := range globSensors {
 		fmt.Fprintln(w, "sauna_temperature{sensor=\""+s.Name+"\"} "+strconv.FormatFloat(s.Temp, 'f', 2, 64))
 	}
