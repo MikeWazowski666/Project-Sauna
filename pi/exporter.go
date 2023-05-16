@@ -76,20 +76,22 @@ func _init() {
 		_, err = slaveHandle.Write([]byte(strconv.Itoa(*resolution)))
 		check(err)
 		slaveHandle.Close()
-
-		globSensors = append(globSensors, Sensor{Name: "Sensor" + strconv.Itoa(i), Temp: 0, Path: s + "/temperature"})
+		globSensors = append(globSensors, readTemp(Sensor{Name: "Sensor" + strconv.Itoa(i), Temp: 0, Path: s + "/temperature"}))
 	}
 }
 
 // Read the temperature from a sensor
 func readTemp(s Sensor) Sensor {
 	data, err := os.ReadFile(s.Path)
+	_dataS := strings.Split(string(data), "\n")
 	if err != nil {
 		log.Println("[!]", err)
-	} else if string(data) != "0\n" {
-		_dataS := strings.Split(string(data), "\n")
+	} else if len(_dataS) == 1 {
+		log.Println("[!]", "No data from sensor", s.Name, ",using last value instead")
+	} else if len(_dataS) == 2 {
 		fTemp, _ := strconv.ParseFloat(_dataS[0], 64)
 		s.Temp = fTemp / 1000 // Convert to celsus
+		s.lastTick = 0
 		return s
 	}
 	s.lastTick += 1
